@@ -39,11 +39,16 @@ function RegisterAssets()
 
 
 
-function GetSceneRenderCommands(RenderContext,Camera)
+function GetSceneRenderCommands(RenderContext,Camera,Viewport=[0,0,1,1])
 {
-	const Viewport = [0,0,1,1];
 	RegisterAssets();
 	
+	//	normalise viewport
+	Viewport[0] = 0;
+	Viewport[1] = 0;
+	Viewport[3] /= Viewport[2];
+	Viewport[2] /= Viewport[2];
+
 	const CubePosition = [0,0,-5];
 	const Geo = AssetManager.GetAsset('Cube01',RenderContext);
 	const Shader = AssetManager.GetAsset(CubeShader,RenderContext);
@@ -58,7 +63,7 @@ function GetSceneRenderCommands(RenderContext,Camera)
 	return [DrawCube];
 }
 
-async function GetMainRenderCommands(RenderContext)
+async function GetMainRenderCommands(RenderView,RenderContext)
 {
 	const SetRenderTarget = ['SetRenderTarget',null,[1,1,0]];
 
@@ -67,7 +72,9 @@ async function GetMainRenderCommands(RenderContext)
 	const Commands = [ SetRenderTarget ];
 	try
 	{
-		Commands.push( ...GetSceneRenderCommands(RenderContext,Camera) );
+		const Viewport = RenderView.GetScreenRect();
+		const SceneCommands = GetSceneRenderCommands(RenderContext,Camera,Viewport);
+		Commands.push( ...SceneCommands );
 	}
 	catch(e)
 	{
@@ -116,7 +123,7 @@ async function RenderLoop(Canvas,XrOnWaitForCallback)
 	
 	while ( RenderView )
 	{
-		const Commands = await GetMainRenderCommands(RenderContext);
+		const Commands = await GetMainRenderCommands(RenderView,RenderContext);
 		await RenderContext.Render(Commands);
 		FrameCounter.Add();
 	}
