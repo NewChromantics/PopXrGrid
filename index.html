@@ -1,5 +1,6 @@
 <html>
 <head>
+<title>PopXrGrid</title>
 <style>
 
 body
@@ -11,16 +12,41 @@ canvas
 {
 }
 
+button#StartXr
+{
+	display:	none;
+	position:	absolute;
+	top:		0vh;
+	left:		0vw;
+	width:		60vw;
+	height:		20vh;
+}
+
 </style>
 
 
 </head>
 <body>
+<button id="StartXr">Start XR</button>
 <canvas id=Window></canvas>
 <script type="module">
 import Bootup from './PopXrGrid.js'
 
-Bootup().then(console.log).catch(console.error);
+function StartXrCallback(Start)
+{
+	function OnClicked()
+	{
+		Button.style.display = null;
+		Start();
+	}
+	
+	console.log(`StartXrCallback ${Start}`);
+	const Button = document.querySelector('#StartXr');
+	Button.style.display = 'block';
+	Button.onclick = OnClicked;
+}	
+
+Bootup(StartXrCallback).then(console.log).catch(console.error);
 
 </script>
 
