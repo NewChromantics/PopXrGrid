@@ -4,7 +4,7 @@ import FrameCounter_t from './PopEngine/FrameCounter.js'
 import Camera_t from './PopEngine/Camera.js'
 import AssetManager from './PopEngine/AssetManager.js'
 import {CreateCubeGeometry} from './PopEngine/CommonGeometry.js'
-import {CreateTranslationMatrix} from './PopEngine/Math.js'
+import {CreateTranslationMatrix,Add3,Subtract3,Multiply3} from './PopEngine/Math.js'
 import {CreateRandomImage} from './PopEngine/Images.js'
 
 
@@ -15,12 +15,12 @@ AppCamera.LookAt = [0,0,-1];
 let LastXrRenderTimeMs = null;
 let DefaultDepthTexture = CreateRandomImage(16,16);
 let CubePosition = [0,1,-1];
-let CubeSize = 0.20;
+let CubeSize = 0.10;
 
 
 async function CreateUnitCubeTriangleBuffer(RenderContext)
 {
-	const Geometry = CreateCubeGeometry(0,CubeSize);
+	const Geometry = CreateCubeGeometry(-CubeSize,CubeSize);
 	const TriangleIndexes = undefined;
 	const TriBuffer = await RenderContext.CreateGeometry(Geometry,TriangleIndexes);
 	return TriBuffer;
@@ -59,14 +59,20 @@ function GetSceneRenderCommands(RenderContext,Camera,Viewport=[0,0,1,1])
 	Viewport[3] /= Viewport[2];
 	Viewport[2] /= Viewport[2];
 
+	let InFrontMetres = 1.0;
+	let Forward = Multiply3( Camera.GetForward(), [InFrontMetres,InFrontMetres,InFrontMetres] );
+	let CubePosition = Add3( Camera.Position, Forward );
+
 	const Geo = AssetManager.GetAsset('Cube01',RenderContext);
 	const Shader = AssetManager.GetAsset(CubeShader,RenderContext);
 	const Uniforms = {};
 	Uniforms.Colour = [1,0,1];
 	Uniforms.LocalToWorldTransform = CreateTranslationMatrix(...CubePosition);
 	Uniforms.WorldToCameraTransform = Camera.GetWorldToCameraMatrix();
+	Uniforms.CameraToWorldTransform = Camera.GetLocalToWorldMatrix();
 	Uniforms.CameraProjectionTransform = Camera.GetProjectionMatrix(Viewport);
 	Uniforms.DepthTexture = Camera.DepthImage || DefaultDepthTexture;
+	Uniforms.NormalDepthToViewDepthTransform = Uniforms.DepthTexture.NormalDepthToViewDepthTransform || [];
 	
 	const DrawCube = ['Draw',Geo,Shader,Uniforms];
 	

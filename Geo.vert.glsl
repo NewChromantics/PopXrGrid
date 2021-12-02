@@ -4,6 +4,9 @@ varying float3 FragColour;
 varying float3 WorldPosition;
 varying float3 FragLocalPosition;
 varying float2 FragLocalUv;
+varying vec3 FragCameraPosition;	//	position in camera space
+varying vec2 FragViewUv;
+varying vec3 ClipPosition;
 varying float TriangleIndex;
 
 uniform mat4 LocalToWorldTransform;
@@ -20,6 +23,11 @@ void main()
 	float4 ProjectionPos = CameraProjectionTransform * CameraPos;
 
 	gl_Position = ProjectionPos;
+	
+	FragViewUv = gl_Position.xy;
+	ClipPosition = gl_Position.xyz / gl_Position.www;	//	not sure if this should divide...
+	
+	FragCameraPosition = CameraPos.xyz ;/// CameraPos.www;
 	
 	WorldPosition = WorldPos.xyz;
 	//FragColour = Colour;//LocalPosition;
