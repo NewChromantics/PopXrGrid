@@ -5,18 +5,22 @@ import Camera_t from './PopEngine/Camera.js'
 import AssetManager from './PopEngine/AssetManager.js'
 import {CreateCubeGeometry} from './PopEngine/CommonGeometry.js'
 import {CreateTranslationMatrix} from './PopEngine/Math.js'
+import {CreateRandomImage} from './PopEngine/Images.js'
+
 
 let AppCamera = new Camera_t();
 //	try and emulate default pose a bit
 AppCamera.Position = [0,0,0];
 AppCamera.LookAt = [0,0,-1];
-
-
+let LastXrRenderTimeMs = null;
+let DefaultDepthTexture = CreateRandomImage(16,16);
+let CubePosition = [0,1,-1];
+let CubeSize = 0.20;
 
 
 async function CreateUnitCubeTriangleBuffer(RenderContext)
 {
-	const Geometry = CreateCubeGeometry(0,1);
+	const Geometry = CreateCubeGeometry(0,CubeSize);
 	const TriangleIndexes = undefined;
 	const TriBuffer = await RenderContext.CreateGeometry(Geometry,TriangleIndexes);
 	return TriBuffer;
@@ -41,15 +45,20 @@ function RegisterAssets()
 
 function GetSceneRenderCommands(RenderContext,Camera,Viewport=[0,0,1,1])
 {
+	//	make screen camera track xr camera
+	AppCamera.Position = Camera.Position.slice();
+	AppCamera.LookAt = Camera.LookAt.slice();
+	
 	RegisterAssets();
 	
+	const ClearCommand = ['SetRenderTarget',null,[0,0,1]];
+			
 	//	normalise viewport
 	Viewport[0] = 0;
 	Viewport[1] = 0;
 	Viewport[3] /= Viewport[2];
 	Viewport[2] /= Viewport[2];
 
-	const CubePosition = [0,0,-5];
 	const Geo = AssetManager.GetAsset('Cube01',RenderContext);
 	const Shader = AssetManager.GetAsset(CubeShader,RenderContext);
 	const Uniforms = {};
@@ -57,31 +66,35 @@ function GetSceneRenderCommands(RenderContext,Camera,Viewport=[0,0,1,1])
 	Uniforms.LocalToWorldTransform = CreateTranslationMatrix(...CubePosition);
 	Uniforms.WorldToCameraTransform = Camera.GetWorldToCameraMatrix();
 	Uniforms.CameraProjectionTransform = Camera.GetProjectionMatrix(Viewport);
+	Uniforms.DepthTexture = Camera.DepthImage || DefaultDepthTexture;
 	
 	const DrawCube = ['Draw',Geo,Shader,Uniforms];
 	
-	return [DrawCube];
+	return [ClearCommand,DrawCube];
+}
+
+function GetXrRenderCommands()
+{
+	LastXrRenderTimeMs = Pop.GetTimeNowMs();
+	return GetSceneRenderCommands(...arguments);
 }
 
 async function GetMainRenderCommands(RenderView,RenderContext)
 {
-	const SetRenderTarget = ['SetRenderTarget',null,[1,1,0]];
-
 	let Camera = AppCamera;
 
-	const Commands = [ SetRenderTarget ];
 	try
 	{
 		const Viewport = RenderView.GetScreenRect();
-		const SceneCommands = GetSceneRenderCommands(RenderContext,Camera,Viewport);
-		Commands.push( ...SceneCommands );
+		const Commands = GetSceneRenderCommands(RenderContext,Camera,Viewport);
+		return Commands;
 	}
 	catch(e)
 	{
 		console.error(e);
+		const ClearRed = ['SetRenderTarget',null,[1,0,0]];
+		return [ClearRed];
 	}
-	
-	return Commands;
 }
 
 
@@ -99,7 +112,8 @@ async function XrLoop(RenderContext,XrOnWaitForCallback)
 	{
 		try
 		{
-			const Device = await Pop.Xr.CreateDevice( RenderContext, GetSceneRenderCommands, XrOnWaitForCallback );
+			LastXrRenderTimeMs = null;
+			const Device = await Pop.Xr.CreateDevice( RenderContext, GetXrRenderCommands, XrOnWaitForCallback );
 			//	this needs updating
 			Device.OnRender = OnXrRender;
 		}
@@ -126,6 +140,11 @@ async function RenderLoop(Canvas,XrOnWaitForCallback)
 		const Commands = await GetMainRenderCommands(RenderView,RenderContext);
 		await RenderContext.Render(Commands);
 		FrameCounter.Add();
+
+		//	only intermediately render if xr is running
+		//	todo: check time since render and "turn on" again if we havent XR rendered for a while
+		if ( LastXrRenderTimeMs )
+			await Pop.Yield(10*1000);
 	}
 }
 
