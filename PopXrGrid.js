@@ -6,7 +6,7 @@ import AssetManager from './PopEngine/AssetManager.js'
 import {CreateCubeGeometry} from './PopEngine/CommonGeometry.js'
 import {CreateTranslationMatrix,Add3,Subtract3,Multiply3} from './PopEngine/Math.js'
 import {CreateRandomImage} from './PopEngine/Images.js'
-
+import {GetRandomColour} from './PopEngine/Colour.js'
 
 let AppCamera = new Camera_t();
 //	try and emulate default pose a bit
@@ -15,7 +15,7 @@ AppCamera.LookAt = [0,0,-1];
 let LastXrRenderTimeMs = null;
 let DefaultDepthTexture = CreateRandomImage(16,16);
 let CubePosition = [0,1,-1];
-let CubeSize = 0.10;
+let CubeSize = 0.02;
 
 
 async function CreateUnitCubeTriangleBuffer(RenderContext)
@@ -42,6 +42,26 @@ function RegisterAssets()
 }
 
 
+	const CubeCount = 4000;
+	function GetPositionN(xyz,Index)
+	{
+		const Div = Math.floor(Math.sqrt(CubeCount));
+		let x = (Index % Div) - (Div/2);
+		let y = Math.floor(Index / Div) - (Div/2);
+		x *= CubeSize*2.5;
+		y *= CubeSize*2.5;
+		x += xyz[0];
+		y += xyz[1];
+		let z = xyz[2];
+		return CreateTranslationMatrix(x,y,z);
+	}
+	function GetColourN(xyz,Index)
+	{
+		return GetRandomColour();
+	}
+
+	const LocalToWorldTransforms = new Float32Array( new Array(CubeCount).fill(CubePosition.slice()).map( GetPositionN ).flat(2) );
+	const Colours = new Float32Array( new Array(LocalToWorldTransforms.length).fill(0).map( GetColourN ).flat(2) );
 
 function GetSceneRenderCommands(RenderContext,Camera,Viewport=[0,0,1,1])
 {
@@ -63,11 +83,14 @@ function GetSceneRenderCommands(RenderContext,Camera,Viewport=[0,0,1,1])
 	let Forward = Multiply3( Camera.GetForward(), [InFrontMetres,InFrontMetres,InFrontMetres] );
 	let CubePosition = Add3( Camera.Position, Forward );
 
+	//	instance testing
+	
+
 	const Geo = AssetManager.GetAsset('Cube01',RenderContext);
 	const Shader = AssetManager.GetAsset(CubeShader,RenderContext);
 	const Uniforms = {};
-	Uniforms.Colour = [1,0,1];
-	Uniforms.LocalToWorldTransform = CreateTranslationMatrix(...CubePosition);
+	Uniforms.LocalToWorldTransform = LocalToWorldTransforms;
+	Uniforms.Colour = Colours;
 	Uniforms.WorldToCameraTransform = Camera.GetWorldToCameraMatrix();
 	Uniforms.CameraToWorldTransform = Camera.GetLocalToWorldMatrix();
 	Uniforms.CameraProjectionTransform = Camera.GetProjectionMatrix(Viewport);
@@ -75,8 +98,14 @@ function GetSceneRenderCommands(RenderContext,Camera,Viewport=[0,0,1,1])
 	Uniforms.NormalDepthToViewDepthTransform = Uniforms.DepthTexture.NormalDepthToViewDepthTransform || [];
 	
 	const DrawCube = ['Draw',Geo,Shader,Uniforms];
+	/*
+	const Uniforms2 = Object.assign({},Uniforms);
+	Uniforms2.LocalToWorldTransform = CreateTranslationMatrix( CubePosition[0]+1, CubePosition[1], CubePosition[2] );
+	Uniforms2.Colour = [0,1,0];
+	const DrawCube2 = ['Draw',Geo,Shader,Uniforms2];
+	*/
 	
-	return [ClearCommand,DrawCube];
+	return [ClearCommand,DrawCube/*,DrawCube2*/];
 }
 
 function GetXrRenderCommands()

@@ -1,5 +1,5 @@
 precision highp float;
-uniform vec3 Colour;
+varying vec3 FragColour;
 
 uniform bool MuteColour;
 uniform bool InvertColour;
@@ -78,6 +78,13 @@ vec3 GetSceneWorldPosition()
 void main()
 {
 	gl_FragColor.w = 1.0;
+	
+	#define HAS_DEPTH	false
+	if ( !HAS_DEPTH )
+	{
+		gl_FragColor.xyz = FragColour;
+		return;
+	}
 	
 	vec4 BEHIND_COLOUR = vec4(1,0,0,0.1);
 	vec4 INFRONT_COLOUR = vec4(FragLocalUv,0,1);
