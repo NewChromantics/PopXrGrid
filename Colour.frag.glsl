@@ -9,7 +9,7 @@ uniform mat4 NormalDepthToViewDepthTransform;
 uniform mat4 CameraToWorldTransform;
 uniform mat4 ProjectionToCameraTransform;
 
-varying vec3 WorldPosition;
+varying vec3 FragWorldPosition;
 varying vec2 FragLocalUv;
 varying vec2 FragViewUv;
 varying vec3 ClipPosition;
@@ -70,14 +70,13 @@ vec3 GetSceneWorldPosition()
 	vec4 WorldPos = CameraToWorldTransform * vec4(CameraPos,1);
 	vec3 WorldPos3 = WorldPos.xyz / WorldPos.www;
 	return WorldPos3;
-
 }
 
 
 
 void main()
 {
-	gl_FragColor.w = 1.0;
+	gl_FragColor.w = 0.5;
 	
 	#define HAS_DEPTH	false
 	if ( !HAS_DEPTH )
