@@ -9,12 +9,15 @@ uniform mat4 NormalDepthToViewDepthTransform;
 uniform mat4 CameraToWorldTransform;
 uniform mat4 ProjectionToCameraTransform;
 
+varying vec3 FragWorldNormal;
+varying vec3 FragLocalNormal;
 varying vec3 FragWorldPosition;
 varying vec2 FragLocalUv;
 varying vec2 FragViewUv;
 varying vec3 ClipPosition;
 
 varying vec3 FragCameraPosition;
+const float FresnelFactor = 3.0;
 
 const float ValueToMetres = 0.0010000000474974513;
 
@@ -73,15 +76,46 @@ vec3 GetSceneWorldPosition()
 }
 
 
+uniform vec3 CameraWorldPosition;
+uniform vec3 CameraWorldFoward;
+
+float Fresnel(vec3 eyeVector, vec3 worldNormal)
+{
+	return pow( 1.0 + dot( eyeVector, worldNormal), FresnelFactor );
+}
 
 void main()
 {
-	gl_FragColor.w = 0.5;
+	gl_FragColor.w = 1.0;
 	
 	#define HAS_DEPTH	false
 	if ( !HAS_DEPTH )
 	{
 		gl_FragColor.xyz = FragColour;
+		
+		//	show normal
+		gl_FragColor.xyz = mix( vec3(0.5,0.5,0.5), vec3(1,1,1), FragWorldNormal );
+		gl_FragColor.xyz = FragWorldNormal;
+		/*
+		gl_FragColor.xyz = FragWorldNormal;
+		if ( FragWorldNormal.y < 0.0 )//down
+		{
+			gl_FragColor.xyz = vec3(0,0,0);
+		}
+		
+		float DotUp = dot( CameraWorldFoward, FragWorldNormal );
+		if ( DotUp < -0.5 )
+			gl_FragColor.xyz = vec3(1,1,1);
+		
+		return;
+		*/
+
+		//gl_FragColor.xyz = vec3(0.0);
+		//	FragCameraPosition pos in camera space
+		vec3 Normal = FragWorldNormal;
+		float Fres = Fresnel( CameraWorldFoward, Normal );
+		gl_FragColor.xyz = mix(gl_FragColor.xyz, vec3(1.0), Fres);
+		
 		return;
 	}
 	

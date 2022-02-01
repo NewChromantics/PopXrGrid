@@ -8,15 +8,16 @@ import {CreateTranslationMatrix,Add3,Subtract3,Multiply3} from './PopEngine/Math
 import {CreateRandomImage} from './PopEngine/Images.js'
 import {GetRandomColour} from './PopEngine/Colour.js'
 import {Dot3,lerp,LengthSq3} from './PopEngine/Math.js'
+import ParseObjGeometry from './PopEngine/PopObj.js'
 
 let AppCamera = new Camera_t();
 //	try and emulate default XR pose a bit
-AppCamera.Position = [0,0,0];
-AppCamera.LookAt = [0,0,-1];
+AppCamera.Position = [0,0,4];
+AppCamera.LookAt = [0,0,0];
 let LastXrRenderTimeMs = null;
 let DefaultDepthTexture = CreateRandomImage(16,16);
-let CubePosition = AppCamera.LookAt.slice();
-let CubeSize = 0.02;
+let CubePosition = [-1,0,0];//AppCamera.LookAt.slice();
+let CubeSize = 10.02;
 
 
 
@@ -28,6 +29,35 @@ async function CreateUnitCubeTriangleBuffer(RenderContext)
 	return TriBuffer;
 }
 
+async function CreateRockTriangleBuffer(RenderContext)
+{
+	const FileContents = await Pop.FileSystem.LoadFileAsStringAsync('Rock_1/Rock_1.obj');
+	const Geos = [];
+	function OnGeo(Geometry)
+	{
+		Geos.push(Geometry);
+	}
+	await ParseObjGeometry(FileContents, OnGeo, Pop.Debug );
+	const Geometry = Geos[0];
+
+
+	//	tidy up output
+	delete Geometry.Name;
+	//const TriangleIndexes = Geometry.TriangleIndexes;
+	const TriangleIndexes = undefined;
+	delete Geometry.TriangleIndexes;
+	
+	
+	const Attribs = {};
+	Attribs.LocalPosition = { Size:3, Data:Geometry.Positions };
+	Attribs.LocalUv = { Size:3, Data:Geometry.TexCoords };
+	Attribs.LocalNormal = { Size:3, Data:Geometry.Normals };
+	
+
+	const TriBuffer = await RenderContext.CreateGeometry(Attribs,TriangleIndexes);
+	return TriBuffer;
+}
+
 
 let CubeShader = null;
 function RegisterAssets()
@@ -35,6 +65,7 @@ function RegisterAssets()
 	if ( CubeShader )
 		return;
 	AssetManager.RegisterAssetAsyncFetchFunction('Cube01', CreateUnitCubeTriangleBuffer );
+	AssetManager.RegisterAssetAsyncFetchFunction('Rock', CreateRockTriangleBuffer );
 
 
 	const Attribs = ['LocalPosition','LocalUv'];
@@ -44,7 +75,7 @@ function RegisterAssets()
 }
 
 
-const CubeCount = 1000;
+const CubeCount = 1;
 function GetPositionN(xyz,Index)
 {
 	const Div = Math.floor(Math.cbrt(CubeCount));
@@ -109,12 +140,14 @@ function GetSceneRenderCommands(RenderContext,Camera,Viewport=[0,0,1,1])
 	}
 	WorldPositions.sort(CompareNearCamera);
 
-	const Geo = AssetManager.GetAsset('Cube01',RenderContext);
+	const Geo = AssetManager.GetAsset('Rock',RenderContext);
 	const Shader = AssetManager.GetAsset(CubeShader,RenderContext);
 	const Uniforms = {};
 	//Uniforms.LocalToWorldTransform = LocalToWorldTransforms;
 	Uniforms.WorldPosition = WorldPositions;
 	Uniforms.Colour = Colours;
+	Uniforms.CameraWorldPosition = Camera.Position;
+	Uniforms.CameraWorldFoward = Camera.GetForward();
 	Uniforms.WorldToCameraTransform = Camera.GetWorldToCameraMatrix();
 	Uniforms.CameraToWorldTransform = Camera.GetLocalToWorldMatrix();
 	Uniforms.CameraProjectionTransform = Camera.GetProjectionMatrix(Viewport);
