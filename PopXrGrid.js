@@ -107,7 +107,7 @@ function GetSceneRenderCommands(RenderContext,Camera,Viewport=[0,0,1,1])
 		if ( Dista > Distb )	return -1;
 		return 0;
 	}
-	WorldPositions.sort(CompareNearCamera);
+	//WorldPositions.sort(CompareNearCamera);
 
 	const Geo = AssetManager.GetAsset('Cube01',RenderContext);
 	const Shader = AssetManager.GetAsset(CubeShader,RenderContext);
@@ -123,6 +123,7 @@ function GetSceneRenderCommands(RenderContext,Camera,Viewport=[0,0,1,1])
 	
 	const State = {};
 	State.BlendMode = 'Alpha';
+	State.BlendMode = 'Blit';
 	//State.DepthRead = false;
 	
 	const DrawCube = ['Draw',Geo,Shader,Uniforms,State];
@@ -179,6 +180,7 @@ async function XrLoop(RenderContext,XrOnWaitForCallback)
 			const Device = await Pop.Xr.CreateDevice( RenderContext, GetXrRenderCommands, XrOnWaitForCallback );
 			//	this needs updating
 			Device.OnRender = OnXrRender;
+			await Device.WaitForEnd();
 		}
 		catch(e)
 		{

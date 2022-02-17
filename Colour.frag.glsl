@@ -76,7 +76,7 @@ vec3 GetSceneWorldPosition()
 
 void main()
 {
-	gl_FragColor.w = 0.5;
+	gl_FragColor.w = 1.0;
 	
 	#define HAS_DEPTH	false
 	if ( !HAS_DEPTH )
