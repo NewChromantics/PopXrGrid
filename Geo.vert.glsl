@@ -10,12 +10,7 @@ varying float TriangleIndex;
 varying vec3 FragColour;
 
 attribute vec3 WorldPosition;
-//attribute mat4 LocalToWorldTransform;
-#define LocalToWorldTransform mat4( 1,0,0,0,	\
-									0,1,0,0,	\
-									0,0,1,0,	\
-									WorldPosition,1 )
-									
+uniform mat4 LocalToWorldTransform;
 uniform mat4 WorldToCameraTransform;
 uniform mat4 CameraProjectionTransform;
 attribute float3 Colour;
@@ -25,6 +20,8 @@ void main()
 	float3 LocalPos = LocalPosition;
 	
 	float4 WorldPos = LocalToWorldTransform * float4(LocalPos,1);
+	WorldPos.xyz += WorldPosition;
+	
 	float4 CameraPos = WorldToCameraTransform * WorldPos;	//	world to camera space
 	float4 ProjectionPos = CameraProjectionTransform * CameraPos;
 

@@ -8,6 +8,7 @@ import {CreateTranslationMatrix,Add3,Subtract3,Multiply3} from './PopEngine/Math
 import {CreateRandomImage} from './PopEngine/Images.js'
 import {GetRandomColour} from './PopEngine/Colour.js'
 import {Dot3,lerp,LengthSq3} from './PopEngine/Math.js'
+import PromiseQueue from './PopEngine/PromiseQueue.js'
 
 let AppCamera = new Camera_t();
 //	try and emulate default XR pose a bit
@@ -18,7 +19,13 @@ let DefaultDepthTexture = CreateRandomImage(16,16);
 let CubePosition = AppCamera.LookAt.slice();
 let CubeSize = 0.02;
 
+let CubesLocalToWorldTransform = [1,0,0,0,	0,1,0,0,	0,0,1,0,	0,0,0,1];
 
+//	callback if tracking image found
+function OnTrackedImage(LocalToWorld)
+{
+	CubesLocalToWorldTransform = LocalToWorld;
+}
 
 async function CreateUnitCubeTriangleBuffer(RenderContext)
 {
@@ -112,7 +119,7 @@ function GetSceneRenderCommands(RenderContext,Camera,Viewport=[0,0,1,1])
 	const Geo = AssetManager.GetAsset('Cube01',RenderContext);
 	const Shader = AssetManager.GetAsset(CubeShader,RenderContext);
 	const Uniforms = {};
-	//Uniforms.LocalToWorldTransform = LocalToWorldTransforms;
+	Uniforms.LocalToWorldTransform = CubesLocalToWorldTransform;
 	Uniforms.WorldPosition = WorldPositions;
 	Uniforms.Colour = Colours;
 	Uniforms.WorldToCameraTransform = Camera.GetWorldToCameraMatrix();
@@ -163,7 +170,7 @@ async function GetMainRenderCommands(RenderView,RenderContext)
 
 
 
-async function XrLoop(RenderContext,XrOnWaitForCallback)
+async function XrLoop(RenderContext,XrOnWaitForCallback,OnStarted)
 {
 	const FrameCounter = new FrameCounter_t(`XR frame`);
 	function OnXrRender()
@@ -171,15 +178,37 @@ async function XrLoop(RenderContext,XrOnWaitForCallback)
 		FrameCounter.Add();
 	}
 	
+	const CatJpg = await Pop.FileSystem.LoadFileAsImageAsync('Cat.jpg');
+	const TrackedImages = {};
+	TrackedImages.Cat =
+	{
+		Image:CatJpg,
+		WidthMetres:0.10,
+	};
 
 	while ( true )
 	{
 		try
 		{
 			LastXrRenderTimeMs = null;
-			const Device = await Pop.Xr.CreateDevice( RenderContext, GetXrRenderCommands, XrOnWaitForCallback );
-			//	this needs updating
-			Device.OnRender = OnXrRender;
+			const Device = await Pop.Xr.CreateDevice( RenderContext, GetXrRenderCommands, XrOnWaitForCallback, TrackedImages );
+			
+			async function WaitForTrackedImageThread()
+			{
+				while(true)
+				{
+					const ImageLocalToWorld = await Device.WaitForTrackedImage();
+					OnTrackedImage(ImageLocalToWorld);
+					
+					//	this was thrashing xr and getting stuck
+					await Pop.Yield(1*1000);
+				}
+			}
+			WaitForTrackedImageThread().catch(console.error);
+			
+			if ( OnStarted )
+				OnStarted(Device);
+			
 			await Device.WaitForEnd();
 		}
 		catch(e)
@@ -211,11 +240,14 @@ function BindMouseCameraControls(Camera,RenderView)
 	}
 }
 
-async function RenderLoop(Canvas,XrOnWaitForCallback)
+async function RenderLoop(Canvas,XrOnWaitForCallback,OnRenderContext)
 {
 	const RenderView = new Pop.Gui.RenderView(null,Canvas);
 	const RenderContext = new Pop.Sokol.Context(RenderView);
 	
+	if ( OnRenderContext )
+		OnRenderContext(RenderContext);
+
 	BindMouseCameraControls( AppCamera, RenderView );
 	
 	if ( XrOnWaitForCallback )
@@ -237,7 +269,126 @@ async function RenderLoop(Canvas,XrOnWaitForCallback)
 }
 
 
+//	is native api Pop.Media.Source?
+export class WebCamera
+{
+	constructor()
+	{
+		this.FrameQueue = new PromiseQueue();
+		this.CameraThreadPromise = this.CameraThread();
+		this.CameraThreadPromise.catch( this.OnError.bind(this) );
+	}
+	
+	OnError(Error)
+	{
+		this.FrameQueue.Reject(Error);
+	}
+	
+	async CameraThread()
+	{
+		if ( !navigator.mediaDevices )
+			throw `MediaDevices not availible`;
+		
+		//	some old implementation
+		//	https://github.com/SoylentGraham/PopEngineOldData/blob/7c6ffc1398fe735065ab4208729c9140de558e05/Data_Posenet/index.html#L385
+		const Constraints = {}
+		Constraints.video = {};
+		//	get rear camera on android
+		Constraints.video.facingMode = "environment";
+		
+		const Stream = await navigator.mediaDevices.getUserMedia(Constraints);
+
+		const VideoLoadedMetaPromise = Pop.CreatePromise();
+		function OnLoaded()
+		{
+			VideoLoadedMetaPromise.Resolve();
+		}
+
+		const VideoElement = document.createElement('video');
+		//document.body.appendChild(VideoElement);
+		VideoElement.srcObject = Stream;
+		VideoElement.autoplay = true;
+		VideoElement.onloadedmetadata = OnLoaded;
+		await VideoLoadedMetaPromise;
+
+		const Frame = {};
+		//Frame.Image = Stream;
+		Frame.Image = VideoElement;
+		Frame.Meta = {};
+		Frame.Meta.Width = VideoElement.videoWidth;
+		Frame.Meta.Height = VideoElement.videoHeight;
+
+		while ( true )
+		{
+			//	todo: get frames, but lets see if barcode detector works with a stream...
+			//this.FrameQueue.Push(VideoElement);
+			this.FrameQueue.Push(Frame);
+			//	todo: get framerate
+			await Pop.Yield(1000/30);
+		}
+	}
+	
+	async WaitForNextFrame(SkipToLatest=false)
+	{
+		if ( SkipToLatest )
+			return this.FrameQueue.WaitForLatest();
+		else
+			return this.FrameQueue.WaitForNext();
+	}
+}
+
+
+async function WaitForQRCode()
+{
+	const Options = {};
+	Options.formats = ['qr_code'];
+	const Detector = new BarcodeDetector(Options);
+	const Camera = new WebCamera();
+
+	while(true)
+	{
+		const Frame = await Camera.WaitForNextFrame(true);
+		
+		function PxToUv(xy)
+		{
+			let u = xy.x / Frame.Meta.Width;
+			let v = xy.y / Frame.Meta.Height;
+			return [u,v];
+		}
+		
+		const Markers = await Detector.detect(Frame.Image);
+		if ( Markers.length )
+		{
+			const Marker = Markers[0];
+			//	get uvs
+			const Value = Marker.rawValue;//"http://en.m.wikipedia.org"
+			const Uvs = Marker.cornerPoints.map( PxToUv );
+			console.log(`Found ${Marker.format} ${Value} at ${Uvs}`);
+			return Uvs;
+		}
+	}
+}
+		
+
 export default async function Bootup(XrOnWaitForCallback)
 {
-	await RenderLoop('Window',XrOnWaitForCallback);
+	//await RenderLoop('Window',XrOnWaitForCallback);
+	
+	let RenderContext;
+	function OnRenderContextCreated(rc)
+	{
+		RenderContext = rc;
+	}
+	const RenderThread = RenderLoop('Window',null,OnRenderContextCreated);
+	
+	const QrCode = await WaitForQRCode();
+	
+	function OnXrStarted(Device)
+	{
+		//	turn the 2D QR code into an anchor in xr
+		console.log(`xr started, do something with QR code uvs`);
+	}
+	
+	//	create xr session
+	await XrLoop(RenderContext,XrOnWaitForCallback,OnXrStarted);
 }
